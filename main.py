@@ -1,25 +1,27 @@
 from email.utils import formataddr
 import random
 import string
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import ForeignKey, create_engine, Column, Integer, String, Text, DateTime, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-import json
+from pydantic import Field
 import uuid
 from dotenv import load_dotenv
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from beanie import init_beanie, Document
+import motor.motor_asyncio
+from datetime import datetime
+from typing import List
 
 app = FastAPI()
+load_dotenv("SECRET_KEY.env")
 
 # CORS setup
 app.add_middleware(
@@ -30,14 +32,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# SQLite database setup
-DATABASE_URL = "sqlite:///./sudoku.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+#MongoDB setup
+MONGO_URL = os.getenv("DATABASE_URL")
+
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+db = client.sudokuDB  # sudokuDB là tên database trong URI
+
+@app.on_event("startup")
+async def app_init():
+    await init_beanie(
+        database=db,
+        document_models=[User, GameState, VerificationCode]
+    )
+
 
 # JWT setup
-load_dotenv("SECRET_KEY.env")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -52,40 +61,44 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Database model
-class User(Base):
-    __tablename__ = "users"
-    id = Column(String, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    games = relationship("GameState", back_populates="user")
-    verification_codes = relationship("VerificationCode", back_populates="user")
+# Database models
+class User(Document):
+    id: str
+    username: str
+    email: EmailStr
+    hashed_password: str
 
-class GameState(Base):
-    __tablename__ = "game_states"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
-    board = Column(Text)
-    initial_puzzle = Column(Text)
-    solution = Column(Text)
-    time_played = Column(Integer)
-    level = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    is_hidden = Column(Boolean, default=False)
-    user = relationship("User", back_populates="games")
+    class Settings:
+        name = "users"  # collection name
+        indexes =  ["email", "username"]
 
-class VerificationCode(Base):
-    __tablename__ = "verification_codes"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
-    code = Column(String, index=True)
-    purpose = Column(String)  # 'registration' or 'password_reset'
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime)
-    user = relationship("User", back_populates="verification_codes")
 
-Base.metadata.create_all(bind=engine)
+class GameState(Document):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), alias="_id")
+    user_id: str
+    board: List[List[int]]
+    initial_puzzle: List[List[int]]
+    solution: List[List[int]]
+    time_played: int
+    level: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_hidden: bool = False
+
+    class Settings:
+        name = "game_states"
+        indexes = ["user_id"]
+
+
+class VerificationCode(Document):
+    user_id: str
+    code: str
+    purpose: str  # "registration" hoặc "password_reset"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+
+    class Settings:
+        name = "verification_codes"
+
 
 # Pydantic models
 class UserCreate(BaseModel):
@@ -94,37 +107,40 @@ class UserCreate(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
-    user_id: str
+    id: str
     username: str
-    email: str
+    email: EmailStr
+    
+    class Config:
+        orm_mode = True
 
 class Token(BaseModel):
     access_token: str
     token_type: str
     user_id: str
     username: str
-    email: str
+    email: EmailStr
 
 class GameStateCreate(BaseModel):
     user_id: str
-    board: list
-    initial_puzzle: list
-    solution: list
+    board: List[List[int]]
+    initial_puzzle: List[List[int]]
+    solution: List[List[int]]
     time_played: int
     level: str
     is_hidden: bool = True
 
 class GameStateUpdate(BaseModel):
-    board: list
+    board: List[List[int]]
     time_played: int
     is_hidden: bool = False
 
 class GameStateResponse(BaseModel):
-    id: int
+    id: str
     user_id: str
-    board: list
-    initial_puzzle: list
-    solution: list
+    board: List[List[int]]
+    initial_puzzle: List[List[int]]
+    solution: List[List[int]]
     time_played: int
     level: str
     created_at: datetime
@@ -145,13 +161,6 @@ class PasswordReset(BaseModel):
     code: str
     new_password: str
 
-# Dependency to get database session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 # Authentication functions
 def verify_password(plain_password, hashed_password):
@@ -170,7 +179,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Không thể xác thực thông tin đăng nhập",
@@ -183,7 +192,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.email == email).first()
+    user = await User.find_one(User.email == email)
     if user is None:
         raise credentials_exception
     return user
@@ -261,21 +270,29 @@ def send_verification_email(to_email: str, code: str, purpose: str):
 
 # Endpoints
 @app.post("/register", response_model=Token)
-async def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
+async def register(user: UserCreate, background_tasks: BackgroundTasks):
+    # kiểm tra email và username
+    db_user = await User.find_one(User.email == user.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="Email đã được đăng ký, vui lòng chọn email khác")
-    db_username = db.query(User).filter(User.username == user.username).first()
+        raise HTTPException(status_code=400, detail="Email đã được đăng ký")
+
+    db_username = await User.find_one(User.username == user.username)
     if db_username:
-        raise HTTPException(status_code=400, detail="Tên người dùng đã được sử dụng, vui lòng chọn tên khác")
+        raise HTTPException(status_code=400, detail="Tên người dùng đã tồn tại")
+
+    # tạo user
     hashed_password = get_password_hash(user.password)
     user_id = str(uuid.uuid4())
-    db_user = User(id=user_id, username=user.username, email=user.email, hashed_password=hashed_password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    # Create a verification code and send it to the user's email
+
+    new_user = User(
+        id=user_id,
+        username=user.username,
+        email=user.email.lower(),
+        hashed_password=hashed_password
+    )
+    await new_user.insert()
+
+    # tạo verification code
     code = generate_verification_code()
     expires_at = datetime.utcnow() + timedelta(minutes=10)
     verification_code = VerificationCode(
@@ -284,59 +301,75 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         purpose="registration",
         expires_at=expires_at
     )
-    db.add(verification_code)
-    db.commit()
-    
-    # Send verification email
+    await verification_code.insert()
+
     send_verification_email(user.email, code, "registration")
     
+    # gửi email trong background thay vì chặn request
+    background_tasks.add_task(send_verification_email, user.email, code, "registration")
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email, "username": user.username}, expires_delta=access_token_expires
+        data={"sub": user.email, "username": user.username}, 
+        expires_delta=access_token_expires
     )
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user_id": db_user.id,
-        "username": db_user.username,
-        "email": db_user.email
+        "user_id": new_user.id,
+        "username": new_user.username,
+        "email": new_user.email
     }
+
     
 @app.post("/verify-registration")
-async def verify_registration(verification: VerificationCodeSubmit, db: Session = Depends(get_db)):
-    verification_code = db.query(VerificationCode).filter(
+async def verify_registration(verification: VerificationCodeSubmit):
+    # Tìm verification code
+    verification_code = await VerificationCode.find_one(
         VerificationCode.code == verification.code,
         VerificationCode.purpose == "registration"
-    ).first()
+    )
     if not verification_code:
         raise HTTPException(status_code=400, detail="Mã xác minh không hợp lệ")
+
     if verification_code.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Mã xác minh đã hết hạn")
-    user = db.query(User).filter(User.id == verification_code.user_id, User.email == verification.email).first()
+
+    # Kiểm tra user khớp với code và email
+    user = await User.find_one(
+        User.id == verification_code.user_id, User.email == verification.email
+    )
     if not user:
         raise HTTPException(status_code=400, detail="Không tìm thấy người dùng")
-    db.delete(verification_code)
-    db.commit()
+
+    # Xoá verification code sau khi dùng
+    await verification_code.delete()
+
     return {"message": "Xác minh thành công"}
 
+
 @app.post("/verify-code")
-async def verify_code(verification: VerificationCodeSubmit, db: Session = Depends(get_db)):
-    verification_code = db.query(VerificationCode).filter(
+async def verify_code(verification: VerificationCodeSubmit):
+    verification_code = await VerificationCode.find_one(
         VerificationCode.code == verification.code,
         VerificationCode.purpose == "password_reset"
-    ).first()
+    )
     if not verification_code:
         raise HTTPException(status_code=400, detail="Mã xác minh không hợp lệ")
     if verification_code.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Mã xác minh đã hết hạn")
-    user = db.query(User).filter(User.id == verification_code.user_id, User.email == verification.email).first()
+    user = await User.find_one(
+        User.id == verification_code.user_id, User.email == verification.email
+    )
     if not user:
         raise HTTPException(status_code=400, detail="Không tìm thấy người dùng")
+    await verification_code.delete()
     return {"message": "Mã xác minh hợp lệ"}
 
 @app.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = await User.find_one(User.email == form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -358,93 +391,96 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
 
 @app.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):
-    return {"user_id": current_user.id, "username": current_user.username, "email": current_user.email}
+    return {"id": current_user.id, "username": current_user.username, "email": current_user.email}
+
 
 @app.post("/forgot-password")
-async def forgot_password(request: VerificationRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+async def forgot_password(request: VerificationRequest):
+    # Tìm user theo email
+    user = await User.find_one(User.email == request.email)
     if not user:
         raise HTTPException(status_code=404, detail="Email không tồn tại")
     
-    # Tạo và lưu mã xác minh
+    # Tạo mã xác minh
     code = generate_verification_code()
     expires_at = datetime.utcnow() + timedelta(minutes=15)
+
     verification_code = VerificationCode(
         user_id=user.id,
         code=code,
         purpose="password_reset",
         expires_at=expires_at
     )
-    db.add(verification_code)
-    db.commit()
+    await verification_code.insert()  # lưu vào MongoDB
     
     # Gửi email thực tế
     send_verification_email(request.email, code, "forgot_password")
     
     return {"message": "Mã xác minh đã được gửi đến email của bạn"}
 
+
 @app.post("/reset-password")
-async def reset_password(reset: PasswordReset, db: Session = Depends(get_db)):
-    verification_code = db.query(VerificationCode).filter(
+async def reset_password(reset: PasswordReset):
+    verification_code = await VerificationCode.find_one(
         VerificationCode.code == reset.code,
         VerificationCode.purpose == "password_reset"
-    ).first()
+    )
     if not verification_code:
         raise HTTPException(status_code=400, detail="Mã xác minh không hợp lệ")
     if verification_code.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Mã xác minh đã hết hạn")
-    user = db.query(User).filter(User.id == verification_code.user_id, User.email == reset.email).first()
+    user = await User.find_one(
+        User.id == verification_code.user_id, User.email == reset.email
+    )
     if not user:
         raise HTTPException(status_code=400, detail="Không tìm thấy người dùng")
     
     # Cập nhật mật khẩu
     user.hashed_password = get_password_hash(reset.new_password)
-    db.delete(verification_code)
-    db.commit()
+    await user.save()
+    await verification_code.delete()
     
     return {"message": "Mật khẩu đã được đặt lại thành công"}
 
 @app.post("/game", response_model=GameStateResponse)
-async def create_game(game: GameStateCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_game(game: GameStateCreate, current_user: User = Depends(get_current_user)):
+    # Kiểm tra quyền
     if game.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền tạo trò chơi cho người dùng khác")
-    db_game = GameState(
+
+    # Tạo game mới
+    new_game = GameState(
         user_id=game.user_id,
-        board=json.dumps(game.board),
-        initial_puzzle=json.dumps(game.initial_puzzle),
-        solution=json.dumps(game.solution),
+        board=game.board,
+        initial_puzzle=game.initial_puzzle,
+        solution=game.solution,
         time_played=game.time_played,
         level=game.level,
         is_hidden=game.is_hidden
     )
-    db.add(db_game)
-    db.commit()
-    db.refresh(db_game)
-    db_game.board = json.loads(db_game.board)
-    db_game.initial_puzzle = json.loads(db_game.initial_puzzle)
-    db_game.solution = json.loads(db_game.solution)
-    return db_game
+    await new_game.insert()
+
+    return new_game
 
 @app.get("/game/{user_id}", response_model=list[GameStateResponse])
-async def get_games(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_games(user_id: str, current_user: User = Depends(get_current_user)):
     if user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền xem trò chơi của người dùng khác")
-    games = db.query(GameState).filter(GameState.user_id == user_id, GameState.is_hidden == False).all()
-    for game in games:
-        game.board = json.loads(game.board)
-        game.initial_puzzle = json.loads(game.initial_puzzle)
-        game.solution = json.loads(game.solution)
+    games = await GameState.find(
+        GameState.user_id == user_id, GameState.is_hidden == False
+    ).to_list()
     return games
 
+
 @app.get("/hint/{game_id}")
-async def get_hint(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_game = db.query(GameState).filter(GameState.id == game_id).first()
+async def get_hint(game_id: str, current_user: User = Depends(get_current_user)):
+    db_game = await GameState.get(game_id)
     if not db_game:
         raise HTTPException(status_code=404, detail="Không tìm thấy ván chơi")
     if db_game.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền truy cập trò chơi này")
-    board = json.loads(db_game.board)
-    solution = json.loads(db_game.solution)
+    board = db_game.board
+    solution = db_game.solution
     
     # Tìm ô sai hoặc ô trống
     hint_cell = None
@@ -507,29 +543,24 @@ async def get_hint(game_id: int, db: Session = Depends(get_db), current_user: Us
     }
 
 @app.put("/game/{game_id}", response_model=GameStateResponse)
-async def update_game(game_id: int, game: GameStateUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_game = db.query(GameState).filter(GameState.id == game_id).first()
+async def update_game(game_id: str, game: GameStateUpdate, current_user: User = Depends(get_current_user)):
+    db_game = await GameState.get(game_id)
     if not db_game:
         raise HTTPException(status_code=404, detail="Không tìm thấy ván chơi")
     if db_game.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền cập nhật trò chơi này")
-    db_game.board = json.dumps(game.board)
+    db_game.board = game.board
     db_game.time_played = game.time_played
     db_game.is_hidden = game.is_hidden
-    db.commit()
-    db.refresh(db_game)
-    db_game.board = json.loads(db_game.board)
-    db_game.initial_puzzle = json.loads(db_game.initial_puzzle)
-    db_game.solution = json.loads(db_game.solution)
+    await db_game.save()
     return db_game
 
 @app.delete("/game/{game_id}")
-async def delete_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_game = db.query(GameState).filter(GameState.id == game_id).first()
+async def delete_game(game_id: str, current_user: User = Depends(get_current_user)):
+    db_game = await GameState.get(game_id)
     if not db_game:
         raise HTTPException(status_code=404, detail="Không tìm thấy ván chơi")
     if db_game.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền xóa trò chơi này")
-    db.delete(db_game)
-    db.commit()
+    await db_game.delete()
     return {"message": "Game deleted"}

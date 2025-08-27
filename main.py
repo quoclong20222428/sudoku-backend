@@ -364,7 +364,6 @@ async def verify_code(verification: VerificationCodeSubmit):
     )
     if not user:
         raise HTTPException(status_code=400, detail="Không tìm thấy người dùng")
-    await verification_code.delete()
     return {"message": "Mã xác minh hợp lệ"}
 
 @app.post("/login", response_model=Token)

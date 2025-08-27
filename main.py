@@ -101,6 +101,10 @@ class VerificationCode(Document):
 
 
 # Pydantic models
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -368,7 +372,8 @@ async def verify_code(verification: VerificationCodeSubmit):
     return {"message": "Mã xác minh hợp lệ"}
 
 @app.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+# async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: LoginRequest):
     user = await User.find_one(User.email == form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(

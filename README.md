@@ -2,62 +2,81 @@
 
 ## 🧹 Introduction
 
-This is a **full-stack web project** developed by a third-year student at **Ho Chi Minh City University of Education (HCMUE)**. It is a simple, responsive, and intuitive **Sudoku web game** powered by **ReactJS** on the frontend and **FastAPI** on the backend. The game offers a smooth user experience, game saving, user authentication via email, and logical hints to assist players.
+This is a **full-stack Sudoku web game** developed by a third-year student at **Ho Chi Minh City University of Education (HCMUE)**. Built with **ReactJS** (hosted on Vercel) and **FastAPI** (hosted on Render), it offers a responsive, intuitive experience with user authentication, game saving, and logical hints. The game uses **MongoDB Atlas** for data storage and supports **Vietnamese language only**.
 
-> 🔒 Note: This game currently supports **Vietnamese language only**.
+**Technologies**:
+
+![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black&style=flat)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white&style=flat)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white&style=flat)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white&style=flat)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white&style=flat)
+![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white&style=flat)
+![Render](https://img.shields.io/badge/Render-46E3B7?logo=render&logoColor=black&style=flat)
+
+---
+
+## 👥 For Players
+
+### Play the Game
+
+Access the Sudoku game directly at:  
+👉 **[https://sudoku-frontend-phi.vercel.app](https://sudoku-frontend-phi.vercel.app)**
+
+### How to Play
+
+1. **Sign Up**: Create an account with your name, email, and password.
+2. **Verify Email**: Check your email for a verification code to activate your account.
+3. **Log In**: Use your email and password to access the game.
+4. **Start Playing**: Choose a difficulty (`Easy`, `Medium`, or `Hard`) and start solving puzzles.
+5. **Features**:
+   - Save and resume your game progress.
+   - Get logical hints when stuck.
+   - Reset your password via email if needed.
+6. **Enjoy**: Solve puzzles, track your time, and have fun!
 
 ![Main Screen Preview](./img.png)
 
-## 🌟 Objectives
-
-* Deliver a clean and user-friendly interface.
-* Allow users to **log in**, **save game progress**, and **resume** saved games.
-* Provide Sudoku puzzles of varying difficulty.
-* Support password reset and email verification via **SMTP**.
-* Offer logical **hints** for puzzle-solving.
-* Ensure secure user data with **JWT authentication**.
-
-## 👥 Target Users
-
-* Individuals or small groups looking for an engaging Sudoku game.
-* Educational or self-practice environments.
-
 ---
 
-## 🛠 Technologies Used
+## 🛠 For Developers
 
-### Frontend
+### Project Overview
 
-* **ReactJS**: For building dynamic UI.
-* **React Router**: For SPA routing.
-* **TypeScript**: For better code safety and maintainability.
-* **Axios**: For making HTTP requests.
+This is a full-stack application with:
+- **Frontend**: ReactJS + TypeScript, Vite, React Router, Axios, hosted on Vercel.
+- **Backend**: FastAPI, MongoDB Atlas (via Beanie ODM), JWT authentication, SMTP for email, hosted on Render.
+- **Objective**: Provide a secure, engaging Sudoku game with user authentication, game persistence, and intelligent hints.
 
-### Backend
+### Technologies Used
 
-* **FastAPI**: High-performance Python web framework.
-* **SQLite**: Lightweight database for persistent game state and users.
-* **SQLAlchemy**: ORM for database interaction.
-* **JWT (JSON Web Token)**: Authentication mechanism.
-* **SMTP**: Send email for registration and password reset.
-* **Pydantic**: Data validation.
+#### Frontend
+- **ReactJS**: Dynamic UI.
+- **React Router**: SPA routing.
+- **TypeScript**: Type safety.
+- **Axios**: HTTP requests.
+- **Vite**: Fast build tool.
+- **Vercel**: Hosting.
 
----
+#### Backend
+- **FastAPI**: High-performance API framework.
+- **MongoDB Atlas**: Cloud-hosted NoSQL database.
+- **Beanie**: MongoDB ODM.
+- **JWT**: Secure authentication.
+- **SMTP**: Email verification/reset.
+- **Pydantic**: Data validation.
+- **Render**: Hosting.
 
-## ⚙️ System Requirements
+### System Requirements
+- **Node.js**: v18+
+- **Python**: v3.9+
+- **FastAPI**: v0.115.x+
+- **MongoDB Atlas**: Account for cloud database.
+- **Internet**: For API, email, and MongoDB Atlas connectivity.
 
-* Node.js (for frontend): v18+
-* Python: v3.9+
-* FastAPI: v0.115.x or later
-* SQLite (default) or custom DB setup
-* Internet connection for API communication and email verification
+### Setup Instructions
 
----
-
-## 🚀 Setup Instructions
-
-### 1. Create a folder and clone the repositories
-
+#### 1. Clone Repositories
 ```bash
 mkdir SudokuGame
 cd SudokuGame
@@ -65,123 +84,115 @@ git clone https://github.com/quoclong20222428/sudoku-frontend.git
 git clone https://github.com/quoclong20222428/sudoku-backend.git
 ```
 
-### 2. Install Frontend Dependencies
-
+#### 2. Install Frontend Dependencies
 ```bash
 cd sudoku-frontend
 npm install
 ```
 
-### 3. Install Backend Dependencies
-
+#### 3. Install Backend Dependencies
 ```bash
 cd ../sudoku-backend
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Variables
+#### 4. Configure Environment Variables
 
-Create a `.env` file inside the `sudoku-backend` folder. This file is used to store sensitive credentials for JWT token generation and SMTP email services.
+- **Backend**: Create `.env` in `sudoku-backend`:
+  ```env
+  # JWT authentication
+  SECRET_KEY=your_random_secret_key_here
+  # SMTP for email
+  SMTP_EMAIL=your_email@gmail.com
+  SMTP_PASSWORD=your_email_app_password
+  # MongoDB Atlas
+  DATABASE_URL=your_mongodb_atlas_connection_string
+  ```
+  > 🔒 **Important Notes:**
+  >
+  > * `SECRET_KEY` can be any long random string. You can generate one using Python:
+  >
+  >   ```python
+  >   import secrets
+  >   print(secrets.token_hex(32))
+  >   ```
+  > * For `SMTP_EMAIL`, use a Gmail account or other SMTP-supported provider.
+  > * **If you're using Gmail**, you must enable **"App Passwords"** in your Google Account and use that password here. Don't use your normal login password.
+  > * Get `DATABASE_URL` from MongoDB Atlas (Connect > Drivers).
+  > * Never commit the `.env` file to version control. Add it to `.gitignore`.
 
-**Example `.env` file:**
+- **Frontend**: Create `.env` in `sudoku-frontend`:
+  ```env
+  VITE_API_BASE_URL=https://your-backend.onrender.com
+  ```
+  Replace with your Render backend URL if you have it.
 
-```env
-# Secret key for JWT authentication
-SECRET_KEY=your_random_secret_key_here
+#### 5. Configure MongoDB Atlas
+- Create a MongoDB Atlas account and cluster.
+- Set up a database named `sudokuDB`.
+- Add the connection string to `DATABASE_URL` in backend `.env`.
+- Ensure MongoDB user has read/write permissions.
 
-# SMTP configuration for email verification and password reset
-SMTP_EMAIL=your_email@gmail.com
-SMTP_PASSWORD=your_email_app_password
-```
-
-> 🔒 **Important Notes:**
->
-> * `SECRET_KEY` can be any long random string. You can generate one using Python:
->
->   ```python
->   import secrets
->   print(secrets.token_hex(32))
->   ```
-> * For `SMTP_EMAIL`, use a Gmail account or other SMTP-supported provider.
-> * **If you're using Gmail**, you must enable **"App Passwords"** in your Google Account and use that password here. Don't use your normal login password.
-> * Never commit the `.env` file to version control. Add it to `.gitignore`.
-
-### 5. Run Backend Server
-
+#### 6. Run Backend
 ```bash
+cd sudoku-backend
 python -m uvicorn main:app --reload --port 8000
 ```
 
-### 6. Run Frontend
-
+#### 7. Run Frontend
 ```bash
-cd ../sudoku-frontend
+cd sudoku-frontend
 npm run dev
 ```
 
----
+#### 8. Test Locally
+Open `http://localhost:5173` (or port shown in terminal).
 
-## 🌟 Main Features
+### Main Features
+1. **User Authentication**: Register, login, JWT sessions, email verification.
+2. **Sudoku Puzzle Generator**: Random puzzles (`easy`, `medium`, `hard`) with guaranteed solutions.
+3. **Game Persistence**: Save/load games to MongoDB Atlas.
+4. **Logical Hints**: Suggests corrections or fills with explanations.
+5. **Password Recovery**: Email-based password reset.
 
-1. **User Authentication**
+### API Endpoints
+- **Auth**: `/register`, `/login`, `/me`, `/forgot-password`, `/reset-password`, `/verify-registration`, `/verify-code`
+- **Game**: `/game`, `/game/{user_id}`, `/hint/{game_id}`, `/game/{game_id}` (PUT, DELETE)
+- **Database**: MongoDB Atlas with collections: `users`, `game_states`, `verification_codes`.
 
-   * Register, Login, and JWT-based sessions.
-   * Email verification using SMTP.
+### Deployment
+- **Frontend**: Vercel ([https://sudoku-frontend-phi.vercel.app](https://sudoku-frontend-phi.vercel.app)).
+- **Backend**: Render with MongoDB Atlas.
+- Configure environment variables in Vercel/Render dashboards:
+  - Frontend: `VITE_API_BASE_URL`.
+  - Backend: `SECRET_KEY`, `SMTP_EMAIL`, `SMTP_PASSWORD`, `DATABASE_URL`.
 
-2. **Sudoku Puzzle Generator**
+### Development Notes
+- **Frontend Routes**: `/`, `/login`, `/register`, `/forgot-password`.
+- **CORS**: Configured to allow frontend domain and localhost for development.
+- **Debugging**: Check browser console (Network/Console) and Render logs for errors.
 
-   * Random puzzles with `easy`, `medium`, and `hard` levels.
-   * Unique solution guaranteed.
+### Contributing to the Project
 
-3. **Save & Load Game**
+We welcome contributions to enhance this Sudoku game! To add new features or improve existing ones, please follow these steps:
 
-   * Autosave current progress to database.
-   * View and manage saved games.
+- **Fork the Repository**: Click the "Fork" button on the GitHub page of either [sudoku-frontend](https://github.com/quoclong20222428/sudoku-frontend) or [sudoku-backend](https://github.com/quoclong20222428/sudoku-backend) to create your own copy.
+- **Clone Your Fork**: Use `git clone <your-fork-url>` to work locally.
+- **Create a Branch**: Create a new branch for your feature (e.g., `git checkout -b feature/new-hint-system`).
+- **Make Changes**: Implement your feature or fix, following the project's coding style and structure.
+- **Test Thoroughly**: Ensure your changes work locally with the setup instructions above.
+- **Commit and Push**: Commit your changes (`git commit -m "Add new feature: ..."`) and push to your fork (`git push origin feature/new-hint-system`).
+- **Submit a Pull Request**: Open a PR from your branch to the original repository. Provide a clear description of your changes and any relevant details.
+- **Review and Merge**: The author will review your PR, and upon approval, your changes will be merged.
 
-4. **Logical Hint System**
-
-   * Highlights incorrect cells or empty cells with logical reasoning.
-
-5. **Password Recovery**
-
-   * Forgot password flow via email verification.
-
----
-
-## 👨‍🏫 Usage Guide
-
-1. **Sign Up**: Enter your name, email, and password to register.
-2. **Email Verification**: A code is sent to your email. Enter it to verify.
-3. **Login**: Access the main game screen.
-4. **Start New Game**: Choose a difficulty and begin playing.
-5. **Save/Load Game**: You can save your progress and resume later.
-6. **Check Solution**: The system verifies if the solution is correct.
-7. **Get Hints**: Receive intelligent guidance when stuck.
-8. **Reset Password**: Use "Forgot Password" to receive a reset code via email.
-
----
-
-## 🔮 Development Notes
-
-* Frontend route paths: `/`, `/login`, `/register`, `/forgot-password`
-* Backend endpoints:
-
-  * `/register`, `/login`, `/me`, `/forgot-password`, `/reset-password`
-  * `/game`, `/game/{user_id}`, `/hint/{game_id}`
+Please ensure your contributions align with the project's goals (e.g., improving gameplay, adding features like multiplayer, or enhancing UI). Feel free to contact me for guidance or to discuss ideas before starting!
 
 ---
 
 ## 📜 License
 
-This project was developed for study purposes at **Ho Chi Minh City University of Education**.
-
-> Please contact the author before using this project for **commercial purposes**.
-
----
+Developed for study purposes at **Ho Chi Minh City University of Education**. Contact the author for commercial use.
 
 ## 📬 Contact
 
-* **Email**: [longtq090204@gmail.com](mailto:longtq090204@gmail.com)
-
-
-
+- **Email**: [longtq090204@gmail.com](mailto:longtq090204@gmail.com)

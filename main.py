@@ -24,7 +24,7 @@ app = FastAPI()
 load_dotenv("SECRET_KEY.env")
 
 # CORS setup
-frontend_url = os.getenv("API_FRONTEND_URL")
+frontend_url = os.getenv("API_FRONTEND_URL", "").strip()
 
 allow_origins = [
     "http://localhost:3000",
@@ -33,6 +33,8 @@ allow_origins = [
 
 if frontend_url:
     allow_origins.append(frontend_url)
+
+print(f"CORS allowed origins: {allow_origins}")
 
 app.add_middleware(
     CORSMiddleware,

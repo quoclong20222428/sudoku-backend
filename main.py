@@ -24,9 +24,19 @@ app = FastAPI()
 load_dotenv("SECRET_KEY.env")
 
 # CORS setup
+frontend_url = os.getenv("API_FRONTEND_URL")
+
+allow_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+
+if frontend_url:
+    allow_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("API_FRONTEND_URL"),"http://localhost:3000", "http://localhost:5173"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -563,3 +573,7 @@ async def delete_game(game_id: str, current_user: User = Depends(get_current_use
         raise HTTPException(status_code=403, detail="Không có quyền xóa trò chơi này")
     await db_game.delete()
     return {"message": "Game deleted"}
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Sudoku API"}

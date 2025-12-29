@@ -19,6 +19,7 @@ from beanie import init_beanie, Document
 import motor.motor_asyncio
 from datetime import datetime
 from typing import List
+import hashlib
 
 app = FastAPI()
 load_dotenv("SECRET_KEY.env")
@@ -34,8 +35,6 @@ allow_origins = [
 if frontend_url:
     allow_origins.append(frontend_url)
 
-print(f"CORS allowed origins: {allow_origins}")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -43,6 +42,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global exception handler
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"❌ Unhandled exception: {type(exc).__name__}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 #MongoDB setup
 MONGO_URL = os.getenv("DATABASE_URL")
@@ -175,11 +186,19 @@ class PasswordReset(BaseModel):
 
 
 # Authentication functions
+def _prehash_password(password: str) -> str:
+    """Hash password với SHA-256 trước khi đưa vào bcrypt để tránh giới hạn 72 bytes"""
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    # Pre-hash password với SHA-256 để tránh giới hạn 72 bytes của bcrypt
+    prehashed = _prehash_password(plain_password)
+    return pwd_context.verify(prehashed, hashed_password)
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    # Pre-hash password với SHA-256 để tránh giới hạn 72 bytes của bcrypt
+    prehashed = _prehash_password(password)
+    return pwd_context.hash(prehashed)
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()

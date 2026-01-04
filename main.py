@@ -20,6 +20,9 @@ import motor.motor_asyncio
 from datetime import datetime
 from typing import List
 import hashlib
+import asyncio
+from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 
 app = FastAPI()
 load_dotenv("SECRET_KEY.env")
@@ -43,6 +46,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+backend_url = "http://localhost:8000"
+
+if os.getenv("BACKEND_URL"):
+    backend_url = os.getenv("BACKEND_URL").strip()
+
 # Global exception handler
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -61,12 +69,87 @@ MONGO_URL = os.getenv("DATABASE_URL")
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
 db = client.sudokuDB  # sudokuDB là tên database trong URI
 
+# MongoDB Keep-Alive Scheduler
+scheduler = BackgroundScheduler()
+
+async def ping_mongodb_keep_alive():
+    """Ping MongoDB Atlas to keep cluster active and prevent auto-pause"""
+    try:
+        ping_client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+        ping_db = ping_client.sudokuDB
+        
+        # Execute a simple query (similar to SELECT 1) to keep connection alive
+        # Using listCollectionNames as a lightweight operation
+        await ping_db.list_collection_names()
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"✅ [{timestamp}] MongoDB keep-alive ping successful")
+        
+        ping_client.close()
+        
+    except Exception as e:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"❌ [{timestamp}] MongoDB keep-alive ping failed: {str(e)}")
+
+def mongodb_keep_alive_job():
+    """Wrapper function to run async ping in scheduler"""
+    try:
+        asyncio.run(ping_mongodb_keep_alive())
+    except Exception as e:
+        print(f"❌ Scheduler error: {e}")
+
+def ping_backend_url():
+    """Ping backend URL to keep Render server active"""
+    try:
+        response = requests.get(backend_url, timeout=10)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if response.status_code == 200:
+            print(f"✅ [{timestamp}] Backend URL ping successful (status: {response.status_code})")
+        else:
+            print(f"⚠️  [{timestamp}] Backend URL ping response: {response.status_code}")
+    except Exception as e:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"❌ [{timestamp}] Backend URL ping failed: {str(e)}")
+
 @app.on_event("startup")
 async def app_init():
     await init_beanie(
         database=db,
         document_models=[User, GameState, VerificationCode]
     )
+    
+    # Start MongoDB keep-alive scheduler
+    if not scheduler.running:
+        scheduler.add_job(
+            mongodb_keep_alive_job,
+            'interval',
+            minutes=60,
+            id='mongodb_keep_alive',
+            name='MongoDB Keep-Alive Ping',
+            replace_existing=True
+        )
+        
+        # Ping backend URL every 10 minutes with random jitter (±1-3 minutes)
+        scheduler.add_job(
+            ping_backend_url,
+            'interval',
+            minutes=10,
+            jitter=180,  # ±3 minutes in seconds (1-3 minutes = 60-180 seconds)
+            id='backend_url_ping',
+            name='Backend URL Keep-Alive Ping',
+            replace_existing=True
+        )
+        
+        scheduler.start()
+        print("✅ MongoDB keep-alive scheduler started (ping every 30 minutes)")
+        print("✅ Backend URL keep-alive scheduler started (ping every 10 minutes ± 1-3 minutes)")
+
+@app.on_event("shutdown")
+async def app_shutdown():
+    """Stop scheduler on server shutdown"""
+    if scheduler.running:
+        scheduler.shutdown()
+        print("✅ MongoDB keep-alive scheduler stopped")
 
 
 # JWT setup
